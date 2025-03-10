@@ -48,7 +48,6 @@ class TripletNetwork:
     def homopolymer_loss(self, y_true, y_pred):
         argmax_indices = tf.argmax(y_pred, axis=-1, output_type=tf.int16)
         penalty_sum = tf.map_fn(lambda seq: self.count_run_length(seq), argmax_indices, dtype=tf.float32)
-
         return tf.reduce_mean(penalty_sum)
 
     def count_run_length(self, seq_indices):
@@ -56,11 +55,11 @@ class TripletNetwork:
         states = (tf.constant(1,dtype=tf.float32), tf.constant(0,dtype=tf.float32))
         
         _, penalty_sum = tf.scan(self.calc_penalty, mask, initializer=states)
-        return penalty_sum[-1]
+        return penalty_sum[-1]/self.encoder.output_len
 
     def calc_penalty(self, state, x):
         prev_run_len, penalty_sum = state
         new_run_len = tf.where(x, prev_run_len + 1.0, 1.0)
-        penalty_t = tf.where(new_run_len > self.homopolymer, tf.exp(tf.cast(new_run_len - self.homopolymer, tf.float32)), 0.0)
+        penalty_t = tf.where(tf.logical_and(new_run_len > self.homopolymer, x == False), tf.cast(new_run_len - self.homopolymer, tf.float32), 0.0)
 
         return (new_run_len, penalty_sum + penalty_t)
