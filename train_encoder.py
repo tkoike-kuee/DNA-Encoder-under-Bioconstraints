@@ -5,7 +5,6 @@ from tqdm import tqdm
 import os
 import numpy as np
 import tensorflow as tf
-# import tensorflow_addons.losses as tfa_loss
 import pandas as pd
 import argparse
 from models.encoder import DNAEncoder
@@ -13,6 +12,9 @@ from models.triplet_network import TripletNetwork
 from models.triplet_dataset import TripletDataset
 import matplotlib.pyplot as plt
 from models.seqtools import onehots_to_seqs, seqs_to_onehots
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio import SeqIO
 
 def encode_queries(encoder, train_data, num_classes):
     train_features = pd.read_hdf(train_data)
@@ -44,13 +46,18 @@ def main():
     parse.add_argument("--target_seqs", type=str, help="Output path for the target sequences")
     parse.add_argument("--query_seqs", type=str, help="Output path for the query sequences")
     parse.add_argument("--encoder_path", type=str, help="Path to the encoder")
+    parse.add_argument("--hp_scale", type=float, help="Homopolymer scale", default=0.05)
+    parse.add_argument("--hp", type=int, help="Number of homopolymer", default=4)
+    parse.add_argument("--epoch", type=int, help="Number of epochs", default=150)
+    parse.add_argument("--margin", type=float, help="Margin", default=0.8)
 
     args = parse.parse_args()
     
     train_features, train_labels = setup_datasets(args.train_data)
     test_features, test_labels = setup_datasets(args.test_data)
     encoder = DNAEncoder()
-    network = TripletNetwork(encoder, num_classes=args.num_classes)
+    network = TripletNetwork(encoder, num_classes=args.num_classes, hp_scale=args.hp_scale, homopolymer=args.hp)
+    callback = tf.keras.callbacks.EarlyStopping(monitor="loss", patience=5)
 
     train_dataset = TripletDataset(encoder, train_features, train_labels)
     val_dataset = TripletDataset(encoder, test_features, test_labels)
@@ -58,8 +65,9 @@ def main():
     history = network.model.fit(
         train_dataset.dataset,
         validation_data = val_dataset.dataset,
-        epochs = 150,
-        verbose = 1
+        epochs = args.epoch,
+        verbose = 1,
+        callbacks=[callback]
     )
     # Save the encoder
     encoder.save(args.encoder_path)
@@ -82,9 +90,17 @@ def main():
     query_seqs = encode_queries(encoder, args.train_data, args.num_classes)
 
     print("Saving the sequences")
-    # Save the DNA sequences
-    pd.DataFrame(query_seqs, index=[i for i in range(args.num_classes)], columns=['FeatureSequence']).to_hdf(args.query_seqs, key='df', mode='w')
-    pd.DataFrame(target_seqs, index=target_features.index, columns=['FeatureSequence']).to_hdf(args.target_seqs, key='df', mode='w')
+    # Save query sequences to a FASTA file
+    query_records = [
+        SeqRecord(Seq(seq[0]), id=str(i), description="") for i, seq in enumerate(query_seqs)
+    ]
+    SeqIO.write(query_records, args.query_seqs, "fasta")
+
+    # Save target sequences to a FASTA file
+    target_records = [
+        SeqRecord(Seq(seq), id=str(idx), description="") for idx, seq in zip(target_features.index, target_seqs)
+    ]
+    SeqIO.write(target_records, args.target_seqs, "fasta")
     
 
 
