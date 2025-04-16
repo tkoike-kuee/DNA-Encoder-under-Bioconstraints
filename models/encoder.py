@@ -1,3 +1,4 @@
+
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -41,6 +42,7 @@ class DNAEncoder:
             setattr(self, arg, val)
 
         if model_path is None:
+            tf.print(f"Creating new model")
             self.model = tf.keras.Sequential([
                 layers.Dense(int(self.input_dim/2), activation = 'relu', input_shape=[self.input_dim]),
                 layers.Dense(self.output_len * 4, activation='relu',name='flat-seq'),
@@ -54,6 +56,7 @@ class DNAEncoder:
                 )
             ], name='DNA_Encoder')
         else:
+            tf.print(f"Loading model from {model_path}")
             self.model = tf.keras.models.load_model(model_path)
         
         self.model.summary()
