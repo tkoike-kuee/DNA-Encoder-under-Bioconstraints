@@ -40,7 +40,7 @@ class TripletNetwork:
         gc_loss = self.gc_balance_loss(y_true, y_pred)
         p_penalty = self.prob_penalty(y_true, y_pred)
     
-        return t_loss + h_loss + gc_loss + self.encoder.entropy_reg_strength*p_penalty
+        return t_loss + (self.encoder.entropy_reg_strength*p_penalty + h_loss)*self.hp_loss_flag + gc_loss*self.gc_loss_flag
 
     def homopolymer_loss(self, y_true, y_pred):
         l2_norm = tf.math.l2_normalize(y_pred, axis=-1)
@@ -50,10 +50,8 @@ class TripletNetwork:
         frame_sum = tf.reduce_sum(split_frame, axis=-1)
         masked_sum = tf.where(frame_min >= 1.0, frame_sum, 0.0)
         penalties = tf.reduce_mean(masked_sum, axis=-1)
-        mask = penalties > 0.0
-        filtered_penalties = tf.boolean_mask(penalties, mask)
 
-        return tf.cond(tf.size(filtered_penalties) > 0, lambda: tf.reduce_mean(filtered_penalties), lambda: tf.constant(0.0))
+        return tf.reduce_mean(penalties)
 
     def prob_penalty(self, y_true, y_pred):
         max_prob = tf.reduce_max(y_pred, axis=-1)
@@ -63,7 +61,7 @@ class TripletNetwork:
         return tf.reduce_mean(log_mean)
     
     def gc_balance_loss(self, y_true, y_pred):
-        gc_prob = y_pred[:, :, 0] + y_pred[:, :, 1] 
+        gc_prob = y_pred[:, :, 2] + y_pred[:, :, 3] 
         mean_gc = tf.reduce_sum(gc_prob, axis=-1)
         penalties =  tf.square(tf.abs(0.5 - mean_gc/self.encoder.output_len)) 
         return tf.reduce_mean(penalties)  

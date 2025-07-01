@@ -4,7 +4,7 @@
 from models.encoder import DNAEncoder
 from models.triplet_network import TripletNetwork
 from models.triplet_dataset import TripletDataset
-from models.parameter_scheduler import HPCount
+from models.callback_hpcount import HPCount
 from models.seqtools import onehots_to_seqs, seqs_to_onehots
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -50,46 +50,52 @@ def main():
     parse.add_argument("--hp", type=int, help="Number of homopolymer", default=4)
     parse.add_argument("--epoch", type=int, help="Number of epochs", default=1000)
     parse.add_argument("--margin", type=float, help="Margin", default=0.8)
+    parse.add_argument("--hp_loss_flag", help="Triplet flag", action='store_false')
+    parse.add_argument("--gc_loss_flag", help="GC loss flag", action='store_false')
+    parse.add_argument("--encode-only", help="Encode only", action='store_true')
 
     args = parse.parse_args()
     
     train_features, train_labels = setup_datasets(args.train_data)
     test_features, test_labels = setup_datasets(args.test_data)
     if os.path.isfile(args.encoder_path) or os.path.isdir(args.encoder_path):
-        encoder = DNAEncoder(model_path=args.encoder_path)
+        encoder = DNAEncoder(model_path=args.encoder_path, hp=args.hp)
         basename = os.path.basename(args.encoder_path)
         dirname = os.path.dirname(args.encoder_path)
         encoder_path = os.path.join(dirname,"re_"+basename)
     else:
-        encoder = DNAEncoder()
+        encoder = DNAEncoder(hp=args.hp)
         encoder_path = args.encoder_path
-    network = TripletNetwork(encoder, num_classes=args.num_classes, homopolymer=args.hp)
-    hp_count = HPCount(x_val=test_features, max_homopolymer=args.hp)
-    es = tf.keras.callbacks.EarlyStopping(monitor='triplet_metrics', patience=5)
+    if not args.encode_only:
+        network = TripletNetwork(encoder, num_classes=args.num_classes, homopolymer=args.hp, hp_loss_flag=int(args.hp_loss_flag), gc_loss_flag=int(args.gc_loss_flag))
+        hp_count = HPCount(x_val=test_features, max_homopolymer=args.hp)
+        es = tf.keras.callbacks.EarlyStopping(monitor='triplet_metrics', patience=10, min_delta=1e-4)
 
-    train_dataset = TripletDataset(encoder, train_features, train_labels)
-    val_dataset = TripletDataset(encoder, test_features, test_labels)
+        train_dataset = TripletDataset(encoder, train_features, train_labels)
+        val_dataset = TripletDataset(encoder, test_features, test_labels)
 
-    history = network.model.fit(
-        train_dataset.dataset,
-        validation_data = val_dataset.dataset,
-        epochs = args.epoch,
-        verbose = 1,
-        callbacks=[hp_count, es],
-    )
-    # Save the encoder
-    encoder.save(encoder_path)
-    #Plot the training loss
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.title('Training and Validation Loss')
-    save_path = args.encoder_path.split(".")[0]+".png"
-    plt.savefig(save_path)
+        history = network.model.fit(
+            train_dataset.dataset,
+            validation_data = val_dataset.dataset,
+            epochs = args.epoch,
+            verbose = 1,
+            callbacks=[hp_count, es],
+        )
+        # Save the encoder
+        encoder.save(encoder_path)
+        #Plot the training loss
+        plt.plot(history.history['loss'], label='Training Loss')
+        plt.plot(history.history['val_loss'], label='Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.title('Training and Validation Loss')
+        save_path = args.encoder_path.split(".")[0]+".png"
+        plt.savefig(save_path)
+        history_df = pd.DataFrame(history.history)
+        history_df.to_csv(save_path.replace(".png", ".csv"), index=False)
 
-    os.makedirs(os.path.dirname(args.encoder_path), exist_ok=True)
+        os.makedirs(os.path.dirname(args.encoder_path), exist_ok=True)
 
     print("Encoding the sequences")
     # encode the features into DNA sequences

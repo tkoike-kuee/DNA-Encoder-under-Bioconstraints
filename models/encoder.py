@@ -2,7 +2,7 @@
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import layers
-from .seqtools import onehots_to_seqs 
+from .seqtools import encode_to_seqs
 
 def entropy_regularizer(strength):
 
@@ -31,7 +31,8 @@ class DNAEncoder:
     defaults = {
         "input_dim": 4096,
         "output_len": 80,
-        "entropy_reg_strength": 1e-2
+        "entropy_reg_strength": 1e-2,
+        "hp": 7
     }
 
     def __init__(self, model_path = None, **kwargs):
@@ -70,7 +71,7 @@ class DNAEncoder:
 
     def encode_feature_seqs(self, X):
         prediction = self.model.predict(X)
-        return onehots_to_seqs(prediction)
+        return encode_to_seqs(prediction, self.hp)
     
     def save(self, model_path):
         self.model.save(model_path)
