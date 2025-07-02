@@ -50,7 +50,7 @@ def main():
     parse.add_argument("--hp", type=int, help="Number of homopolymer", default=4)
     parse.add_argument("--epoch", type=int, help="Number of epochs", default=1000)
     parse.add_argument("--margin", type=float, help="Margin", default=0.8)
-    parse.add_argument("--hp_loss_flag", help="Triplet flag", action='store_false')
+    parse.add_argument("--hp_loss_flag", help="Homopolymer loss flag", action='store_false')
     parse.add_argument("--gc_loss_flag", help="GC loss flag", action='store_false')
     parse.add_argument("--encode-only", help="Encode only", action='store_true')
 
